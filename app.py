@@ -5,11 +5,12 @@ import os
 import glob
 import re
 import numpy as np
+import json
 
-# Keras
-from keras.applications.imagenet_utils import preprocess_input, decode_predictions
-from keras.models import load_model
-from keras.preprocessing import image
+# Keras (from tensorflow)
+from tensorflow.keras.applications.resnet50 import preprocess_input
+from tensorflow.keras.models import model_from_json
+from tensorflow.keras.preprocessing import image
 
 # Flask utils
 from flask import Flask, redirect, url_for, request, render_template
@@ -20,19 +21,22 @@ from gevent.pywsgi import WSGIServer
 app = Flask(__name__)
 
 # Model saved with Keras model.save()
-MODEL_PATH = 'models/your_model.h5'
+MODEL_PATH_JSON = 'models/transfer-learning-resnet50.json'
+MODEL_PATH_H5 = 'models/transfer-learning-resnet50.h5'
 
 # Load your trained model
-# model = load_model(MODEL_PATH)
-# model._make_predict_function()          # Necessary
-# print('Model loaded. Start serving...')
+# json loading is done by hand here to prevent some errors with the way
+# tensorflow-keras calls the python json parser 
+with open(MODEL_PATH_JSON, 'r') as json_file:
+    architecture = json.load(json_file)
+    model = model_from_json(json.dumps(architecture))
 
-# You can also use pretrained model from Keras
-# Check https://keras.io/applications/
-from keras.applications.resnet50 import ResNet50
-model = ResNet50(weights='imagenet')
-print('Model loaded. Check http://127.0.0.1:5000/')
+model._make_predict_function()          # Necessary
+model.load_weights(MODEL_PATH_H5)
 
+class_associations = {0: 'defect', 1: 'good'}
+
+print('Model loaded. Start serving on http://127.0.0.1:5000/...')
 
 def model_predict(img_path, model):
     img = image.load_img(img_path, target_size=(224, 224))
@@ -72,10 +76,10 @@ def upload():
         preds = model_predict(file_path, model)
 
         # Process your result for human
-        # pred_class = preds.argmax(axis=-1)            # Simple argmax
-        pred_class = decode_predictions(preds, top=1)   # ImageNet Decode
-        result = str(pred_class[0][0][1])               # Convert to string
-        return result
+        pred_class = preds.argmax(axis=-1) # Simple argmax
+        print(preds)
+        print("Response from neural network (defect: {}; good: {})".format(preds[0][0], preds[0][1]))
+        return str(class_associations[pred_class[0]])          
     return None
 
 
